@@ -53,3 +53,14 @@ def lazy_paginate(page_size):
         
         # Update offset for the next page
         offset += page_size
+
+####################
+
+# Create the generator
+users_generator = lazy_paginate(10)  # Page size of 10
+
+# Get users one by one, with each being fetched only when needed
+for user in users_generator:
+    print(user)
+    # Process each user...
+    # The next page is only fetched when all users from the current page are consumed
