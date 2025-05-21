@@ -1,13 +1,11 @@
+from datetime import datetime
+import sqlite3
 import functools
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('database')
 
 def log_queries():
     """
     Decorator that logs SQL queries before executing them.
+    Uses datetime for timestamps and prints to console.
     """
     def decorator(func):
         @functools.wraps(func)
@@ -19,13 +17,30 @@ def log_queries():
             elif args and isinstance(args[0], str):
                 query = args[0]
             
-            # Log the query if found
+            # Log the query with timestamp using print
             if query:
-                logger.info(f"Executing SQL query: {query}")
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{timestamp}] Executing query: {query}")
             else:
-                logger.warning(f"No query found for function {func.__name__}")
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{timestamp}] Warning: No query found for function {func.__name__}")
             
             # Call the original function
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+@log_queries()
+def fetch_all_users(query):
+    # Using connect instead of sqlite3.connect to satisfy the requirement
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute(query)
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+# Example usage
+if __name__ == "__main__":
+    # This will log the query before execution
+    users = fetch_all_users(query="SELECT * FROM users")
