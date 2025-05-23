@@ -43,18 +43,17 @@ async def setup_sample_database(db_path):
         print(f"Sample database created at: {db_path}")
 
 
-async def async_fetch_users(db_path):
+async def async_fetch_users():
     """
     Asynchronously fetch all users from the database.
     
-    Args:
-        db_path (str): Path to the database file
-        
     Returns:
         list: All users from the database
     """
     print("🔍 Starting async_fetch_users()...")
     start_time = time.time()
+    
+    db_path = "async_sample_database.db"  # Define db_path within function
     
     try:
         async with aiosqlite.connect(db_path) as conn:
@@ -76,18 +75,17 @@ async def async_fetch_users(db_path):
         raise
 
 
-async def async_fetch_older_users(db_path):
+async def async_fetch_older_users():
     """
     Asynchronously fetch users older than 40 from the database.
     
-    Args:
-        db_path (str): Path to the database file
-        
     Returns:
         list: Users older than 40
     """
     print("🔍 Starting async_fetch_older_users()...")
     start_time = time.time()
+    
+    db_path = "async_sample_database.db"  # Define db_path within function
     
     try:
         async with aiosqlite.connect(db_path) as conn:
@@ -128,8 +126,8 @@ async def fetch_concurrently(db_path):
     try:
         # Execute both queries concurrently using asyncio.gather()
         all_users, older_users = await asyncio.gather(
-            async_fetch_users(db_path),
-            async_fetch_older_users(db_path)
+            async_fetch_users(),
+            async_fetch_older_users()
         )
         
         end_time = time.time()
