@@ -107,7 +107,40 @@ async def async_fetch_older_users():
         raise
 
 
-async def fetch_concurrently(db_path):
+async def fetch_concurrently():
+    """
+    Execute both database queries concurrently using asyncio.gather().
+    
+    Returns:
+        tuple: Results from both queries (all_users, older_users)
+    """
+    print("\n" + "="*60)
+    print("🚀 Starting concurrent database queries...")
+    print("="*60)
+    
+    start_time = time.time()
+    
+    try:
+        # Execute both queries concurrently using asyncio.gather()
+        all_users, older_users = await asyncio.gather(
+            async_fetch_users(),
+            async_fetch_older_users()
+        )
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        print(f"\n🎉 Both queries completed concurrently in {total_time:.3f} seconds")
+        print("="*60)
+        
+        return all_users, older_users
+        
+    except Exception as e:
+        print(f"❌ Error in concurrent execution: {e}")
+        raise
+
+
+async def fetch_concurrently_with_path(db_path):
     """
     Execute both database queries concurrently using asyncio.gather().
     
@@ -187,7 +220,7 @@ async def main():
         await setup_sample_database(db_path)
         
         # Run concurrent queries
-        all_users, older_users = await fetch_concurrently(db_path)
+        all_users, older_users = await fetch_concurrently()
         
         # Display results
         display_results(all_users, older_users)
