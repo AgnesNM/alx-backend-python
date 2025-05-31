@@ -33,5 +33,41 @@ class TestAccessNestedMap(unittest.TestCase):
         expected_key = path[-1]  # The last key in the path that failed
         self.assertEqual(str(context.exception), f"'{expected_key}'")
 
+class TestGetJson(unittest.TestCase):
+    """Test cases for the get_json function."""
+    
+    @parameterized.expand([
+        ("http://example.com", {"payload": True}),
+        ("http://holberton.io", {"payload": False}),
+    ])
+    @patch('utils.requests.get')
+    def test_get_json(self, test_url, test_payload, mock_get):
+        """Test that utils.get_json returns the expected result.
+        
+        Parameters
+        ----------
+        test_url : str
+            The URL to test with
+        test_payload : dict
+            The expected payload to be returned
+        mock_get : Mock
+            The mocked requests.get method
+        """
+        # Create a mock response object
+        mock_response = Mock()
+        mock_response.json.return_value = test_payload        
+        
+        # Configure the mock to return our mock response
+        mock_get.return_value = mock_response
+        
+        # Call the function under test
+        result = utils.get_json(test_url)
+        
+        # Assert that requests.get was called exactly once with the test_url
+        mock_get.assert_called_once_with(test_url)
+        
+        # Assert that the result equals the expected test_payload
+        self.assertEqual(result, test_payload)
+
 if __name__ == "__main__":
     unittest.main()
