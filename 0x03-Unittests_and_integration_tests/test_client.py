@@ -20,14 +20,14 @@ class TestGithubOrgClient(unittest.TestCase):
         expected_org_data = {
             "login": org_name,
             "id": 12345,
-            "url": f"https://api.github.com/orgs/{org_name}"
+            "url": "https://api.github.com/orgs/{}".format(org_name)
         }
         mock_get_json.return_value = expected_org_data
         
         client = GithubOrgClient(org_name)
         result = client.org
         
-        expected_url = f"https://api.github.com/orgs/{org_name}"
+        expected_url = "https://api.github.com/orgs/{}".format(org_name)
         mock_get_json.assert_called_once_with(expected_url)
         self.assertEqual(result, expected_org_data)
 
