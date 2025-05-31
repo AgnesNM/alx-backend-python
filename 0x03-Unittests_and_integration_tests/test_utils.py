@@ -34,33 +34,40 @@ class TestAccessNestedMap(unittest.TestCase):
         self.assertEqual(str(context.exception), f"'{expected_key}'")
         
 
+
 class TestGetJson(unittest.TestCase):
     """Test class for utils.get_json function."""
     
-    def test_get_json(self):
-        """Test that utils.get_json returns the expected result."""
-        test_cases = [
-            ("http://example.com", {"payload": True}),
-            ("http://holberton.io", {"payload": False}),
-        ]
+    @parameterized.expand([
+        ("http://example.com", {"payload": True}),
+        ("http://holberton.io", {"payload": False}),
+    ])
+    @patch('utils.requests.get')
+    def test_get_json(self, test_url, test_payload, mock_get):
+        """Test that utils.get_json returns the expected result.
         
-        for test_url, test_payload in test_cases:
-            with self.subTest(url=test_url):
-                with patch('requests.get') as mock_get:
-                    # Configure the mock to return a Mock object with a json method
-                    mock_response = Mock()
-                    mock_response.json.return_value = test_payload
-                    mock_get.return_value = mock_response
-                    
-                    # Call the function under test
-                    result = get_json(test_url)
-                    
-                    # Assert that requests.get was called exactly once with the test_url
-                    mock_get.assert_called_once_with(test_url)
-                    
-                    # Assert that the result equals the expected test_payload
-                    self.assertEqual(result, test_payload)
-      
+        Parameters
+        ----------
+        test_url : str
+            The URL to test with
+        test_payload : dict
+            The expected payload to be returned
+        mock_get : Mock
+            The mocked requests.get method
+        """
+        # Configure the mock to return a Mock object with a json method
+        mock_response = Mock()
+        mock_response.json.return_value = test_payload
+        mock_get.return_value = mock_response
+        
+        # Call the function under test
+        result = utils.get_json(test_url)
+        
+        # Assert that requests.get was called exactly once with the test_url
+        mock_get.assert_called_once_with(test_url)
+        
+        # Assert that the result equals the expected test_payload
+        self.assertEqual(result, test_payload)     
 
 
 if __name__ == "__main__":
