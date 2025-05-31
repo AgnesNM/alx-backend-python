@@ -33,6 +33,7 @@ class TestAccessNestedMap(unittest.TestCase):
         expected_key = path[-1]  # The last key in the path that failed
         self.assertEqual(str(context.exception), f"'{expected_key}'")
         
+
 class TestGetJson(unittest.TestCase):
     """Test class for utils.get_json function."""
     
@@ -45,14 +46,14 @@ class TestGetJson(unittest.TestCase):
         
         for test_url, test_payload in test_cases:
             with self.subTest(url=test_url):
-                with patch('utils.requests.get') as mock_get:
+                with patch('requests.get') as mock_get:
                     # Configure the mock to return a Mock object with a json method
                     mock_response = Mock()
                     mock_response.json.return_value = test_payload
                     mock_get.return_value = mock_response
                     
                     # Call the function under test
-                    result = utils.get_json(test_url)
+                    result = get_json(test_url)
                     
                     # Assert that requests.get was called exactly once with the test_url
                     mock_get.assert_called_once_with(test_url)
