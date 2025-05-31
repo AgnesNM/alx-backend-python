@@ -10,7 +10,7 @@ from client import GithubOrgClient
 class TestGithubOrgClient(unittest.TestCase):
     """Test class for GithubOrgClient"""
 
-    @patch('utils.get_json')
+    @patch('client.get_json')
     @parameterized.expand([
         ("google",),
         ("abc",),
