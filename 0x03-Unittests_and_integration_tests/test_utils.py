@@ -34,7 +34,7 @@ class TestAccessNestedMap(unittest.TestCase):
         self.assertEqual(str(context.exception), f"'{expected_key}'")
 
 class TestGetJson(unittest.TestCase):
-    """Test cases for the get_json function."""
+    """Test class for utils.get_json function."""
     
     @parameterized.expand([
         ("http://example.com", {"payload": True}),
@@ -53,11 +53,9 @@ class TestGetJson(unittest.TestCase):
         mock_get : Mock
             The mocked requests.get method
         """
-        # Create a mock response object
+        # Configure the mock to return a Mock object with a json method
         mock_response = Mock()
-        mock_response.json.return_value = test_payload        
-        
-        # Configure the mock to return our mock response
+        mock_response.json.return_value = test_payload
         mock_get.return_value = mock_response
         
         # Call the function under test
@@ -67,7 +65,8 @@ class TestGetJson(unittest.TestCase):
         mock_get.assert_called_once_with(test_url)
         
         # Assert that the result equals the expected test_payload
-        self.assertEqual(result, test_payload)
+        self.assertEqual(result, test_payload)        
+
 
 if __name__ == "__main__":
     unittest.main()
