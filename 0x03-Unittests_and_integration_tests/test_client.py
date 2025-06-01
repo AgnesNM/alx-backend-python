@@ -6,7 +6,8 @@ specifically testing the org method with mocked dependencies.
 """
 import unittest
 from unittest.mock import patch
-from parameterized import parameterized
+from parameterized import parameterized, parameterized_class
+import fixtures
 
 
 class TestGithubOrgClient(unittest.TestCase):
@@ -111,6 +112,57 @@ class TestGithubOrgClient(unittest.TestCase):
 
         result = GithubOrgClient.has_license(repo, license_key)
         self.assertEqual(result, expected)
+
+
+@parameterized_class(
+    ("org_payload", "repos_payload", "expected_repos", "apache2_repos"),
+    [
+        (
+            fixtures.org_payload,
+            fixtures.repos_payload,
+            fixtures.expected_repos,
+            fixtures.apache2_repos
+        )
+    ]
+)
+class TestIntegrationGithubOrgClient(unittest.TestCase):
+    """Integration test class for GithubOrgClient.
+
+    This class tests the GithubOrgClient in an integration context,
+    mocking only external HTTP requests while testing the full workflow.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Set up class fixtures for integration testing.
+
+        This method sets up mock responses for requests.get to return
+        the appropriate fixture data based on the requested URL.
+        """
+        import fixtures
+
+        def side_effect(url):
+            """Side effect function to return appropriate mock response."""
+            mock_response = unittest.mock.Mock()
+            if url == "https://api.github.com/orgs/google":
+                mock_response.json.return_value = cls.org_payload
+            elif url == cls.org_payload.get("repos_url"):
+                mock_response.json.return_value = cls.repos_payload
+            else:
+                mock_response.json.return_value = {}
+            return mock_response
+
+        cls.get_patcher = patch('requests.get', side_effect=side_effect)
+        cls.get_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Tear down class fixtures after integration testing.
+
+        This method stops the requests.get patcher to clean up
+        after integration tests.
+        """
+        cls.get_patcher.stop()
 
 
 if __name__ == "__main__":
