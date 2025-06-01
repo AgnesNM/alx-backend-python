@@ -191,11 +191,216 @@ class MessageCreateSerializer(serializers.ModelSerializer):
         return message
 
 
+# chats/filters.py
+
+import django_filters
+from django.db.models import Q
+from .models import Conversation, Message
+
+
+class ConversationFilter(django_filters.FilterSet):
+    """
+    Filter class for Conversation model
+    """
+    conversation_type = django_filters.ChoiceFilter(
+        choices=Conversation.CONVERSATION_TYPES,
+        field_name='conversation_type'
+    )
+    
+    participant = django_filters.UUIDFilter(
+        field_name='participants__id',
+        lookup_expr='exact'
+    )
+    
+    participant_username = django_filters.CharFilter(
+        field_name='participants__username',
+        lookup_expr='icontains'
+    )
+    
+    has_unread = django_filters.BooleanFilter(
+        method='filter_has_unread'
+    )
+    
+    is_active = django_filters.BooleanFilter(
+        field_name='is_active'
+    )
+    
+    created_after = django_filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='gte'
+    )
+    
+    created_before = django_filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='lte'
+    )
+    
+    updated_after = django_filters.DateTimeFilter(
+        field_name='updated_at',
+        lookup_expr='gte'
+    )
+    
+    updated_before = django_filters.DateTimeFilter(
+        field_name='updated_at',
+        lookup_expr='lte'
+    )
+    
+    title = django_filters.CharFilter(
+        field_name='title',
+        lookup_expr='icontains'
+    )
+    
+    class Meta:
+        model = Conversation
+        fields = [
+            'conversation_type', 'participant', 'participant_username',
+            'has_unread', 'is_active', 'created_after', 'created_before',
+            'updated_after', 'updated_before', 'title'
+        ]
+    
+    def filter_has_unread(self, queryset, name, value):
+        """Filter conversations that have unread messages for the current user"""
+        if not value or not self.request or not self.request.user.is_authenticated:
+            return queryset
+        
+        user = self.request.user
+        conversations_with_unread = []
+        
+        for conversation in queryset:
+            participant = conversation.conversation_participants.filter(user=user).first()
+            if participant and participant.get_unread_count() > 0:
+                conversations_with_unread.append(conversation.id)
+        
+        return queryset.filter(id__in=conversations_with_unread)
+
+
+class MessageFilter(django_filters.FilterSet):
+    """
+    Filter class for Message model
+    """
+    conversation = django_filters.UUIDFilter(
+        field_name='conversation__id',
+        lookup_expr='exact'
+    )
+    
+    sender = django_filters.UUIDFilter(
+        field_name='sender__id',
+        lookup_expr='exact'
+    )
+    
+    sender_username = django_filters.CharFilter(
+        field_name='sender__username',
+        lookup_expr='icontains'
+    )
+    
+    message_type = django_filters.ChoiceFilter(
+        choices=Message.MESSAGE_TYPES,
+        field_name='message_type'
+    )
+    
+    has_attachment = django_filters.BooleanFilter(
+        method='filter_has_attachment'
+    )
+    
+    is_reply = django_filters.BooleanFilter(
+        method='filter_is_reply'
+    )
+    
+    is_edited = django_filters.BooleanFilter(
+        field_name='is_edited'
+    )
+    
+    is_deleted = django_filters.BooleanFilter(
+        field_name='is_deleted'
+    )
+    
+    created_after = django_filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='gte'
+    )
+    
+    created_before = django_filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='lte'
+    )
+    
+    content = django_filters.CharFilter(
+        field_name='content',
+        lookup_expr='icontains'
+    )
+    
+    # Date range filters
+    today = django_filters.BooleanFilter(
+        method='filter_today'
+    )
+    
+    this_week = django_filters.BooleanFilter(
+        method='filter_this_week'
+    )
+    
+    this_month = django_filters.BooleanFilter(
+        method='filter_this_month'
+    )
+    
+    class Meta:
+        model = Message
+        fields = [
+            'conversation', 'sender', 'sender_username', 'message_type',
+            'has_attachment', 'is_reply', 'is_edited', 'is_deleted',
+            'created_after', 'created_before', 'content', 'today',
+            'this_week', 'this_month'
+        ]
+    
+    def filter_has_attachment(self, queryset, name, value):
+        """Filter messages that have attachments"""
+        if value:
+            return queryset.exclude(attachment='')
+        return queryset.filter(attachment='')
+    
+    def filter_is_reply(self, queryset, name, value):
+        """Filter messages that are replies"""
+        if value:
+            return queryset.exclude(reply_to__isnull=True)
+        return queryset.filter(reply_to__isnull=True)
+    
+    def filter_today(self, queryset, name, value):
+        """Filter messages from today"""
+        if not value:
+            return queryset
+        
+        from django.utils import timezone
+        today = timezone.now().date()
+        return queryset.filter(created_at__date=today)
+    
+    def filter_this_week(self, queryset, name, value):
+        """Filter messages from this week"""
+        if not value:
+            return queryset
+        
+        from django.utils import timezone
+        import datetime
+        
+        today = timezone.now().date()
+        start_week = today - datetime.timedelta(days=today.weekday())
+        return queryset.filter(created_at__date__gte=start_week)
+    
+    def filter_this_month(self, queryset, name, value):
+        """Filter messages from this month"""
+        if not value:
+            return queryset
+        
+        from django.utils import timezone
+        today = timezone.now().date()
+        start_month = today.replace(day=1)
+        return queryset.filter(created_at__date__gte=start_month)
+
+
 # chats/views.py
 
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Prefetch
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -204,6 +409,7 @@ from .serializers import (
     ConversationSerializer, MessageSerializer, MessageCreateSerializer,
     UserSerializer
 )
+from .filters import ConversationFilter, MessageFilter
 
 User = get_user_model()
 
@@ -214,6 +420,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ConversationSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = ConversationFilter
+    search_fields = ['title', 'participants__username', 'participants__first_name', 'participants__last_name']
+    ordering_fields = ['created_at', 'updated_at', 'participant_count']
+    ordering = ['-updated_at']
     
     def get_queryset(self):
         """Return conversations where user is a participant"""
@@ -349,6 +560,11 @@ class MessageViewSet(viewsets.ModelViewSet):
     ViewSet for managing messages
     """
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = MessageFilter
+    search_fields = ['content', 'sender__username', 'sender__first_name', 'sender__last_name']
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['created_at']
     
     def get_serializer_class(self):
         if self.action == 'create':
