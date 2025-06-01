@@ -7,7 +7,6 @@ specifically testing the org method with mocked dependencies.
 import unittest
 from unittest.mock import patch
 from parameterized import parameterized
-from client import GithubOrgClient
 
 
 class TestGithubOrgClient(unittest.TestCase):
@@ -33,6 +32,8 @@ class TestGithubOrgClient(unittest.TestCase):
             org_name: Name of the organization to test
             mock_get_json: Mock object for the get_json function
         """
+        from client import GithubOrgClient
+        
         expected_org_data = {"login": org_name, "id": 12345}
         mock_get_json.return_value = expected_org_data
 
@@ -47,6 +48,8 @@ class TestGithubOrgClient(unittest.TestCase):
         This method tests that the _public_repos_url property returns
         the correct repos_url from the mocked org payload.
         """
+        from client import GithubOrgClient
+        
         known_payload = {
             "repos_url": "https://api.github.com/orgs/google/repos"
         }
@@ -67,6 +70,8 @@ class TestGithubOrgClient(unittest.TestCase):
         Args:
             mock_get_json: Mock object for the get_json function
         """
+        from client import GithubOrgClient
+        
         test_payload = [
             {"name": "episodes.dart"},
             {"name": "kratu"},
