@@ -85,10 +85,10 @@ class TestGithubOrgClient(unittest.TestCase):
 
         test_url = "https://api.github.com/orgs/google/repos"
         property_patch = 'client.GithubOrgClient._public_repos_url'
-        
+
         def property_factory():
             return property(lambda self: test_url)
-        
+
         with patch(property_patch, new_callable=property_factory) \
                 as mock_public_repos_url:
 
