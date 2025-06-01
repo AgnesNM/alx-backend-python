@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 from parameterized import parameterized, parameterized_class
 import fixtures
+import unittest.mock
 
 
 class TestGithubOrgClient(unittest.TestCase):
@@ -116,14 +117,7 @@ class TestGithubOrgClient(unittest.TestCase):
 
 @parameterized_class(
     ("org_payload", "repos_payload", "expected_repos", "apache2_repos"),
-    [
-        (
-            fixtures.org_payload,
-            fixtures.repos_payload,
-            fixtures.expected_repos,
-            fixtures.apache2_repos
-        )
-    ]
+    fixtures.TEST_PAYLOAD
 )
 class TestIntegrationGithubOrgClient(unittest.TestCase):
     """Integration test class for GithubOrgClient.
@@ -139,8 +133,6 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
         This method sets up mock responses for requests.get to return
         the appropriate fixture data based on the requested URL.
         """
-        import fixtures
-
         def side_effect(url):
             """Side effect function to return appropriate mock response."""
             mock_response = unittest.mock.Mock()
