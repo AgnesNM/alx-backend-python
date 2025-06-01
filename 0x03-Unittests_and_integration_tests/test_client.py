@@ -92,6 +92,26 @@ class TestGithubOrgClient(unittest.TestCase):
 
             mock_get_json.assert_called_once()
 
+    @parameterized.expand([
+        ({"license": {"key": "my_license"}}, "my_license", True),
+        ({"license": {"key": "other_license"}}, "my_license", False),
+    ])
+    def test_has_license(self, repo: dict, license_key: str, expected: bool) -> None:
+        """Test that GithubOrgClient.has_license returns expected result.
+
+        This method tests that the has_license static method correctly
+        identifies whether a repository has a specific license.
+
+        Args:
+            repo: Repository dictionary containing license information
+            license_key: License key to check for
+            expected: Expected boolean result
+        """
+        from client import GithubOrgClient
+
+        result = GithubOrgClient.has_license(repo, license_key)
+        self.assertEqual(result, expected)
+
 
 if __name__ == "__main__":
     unittest.main()
