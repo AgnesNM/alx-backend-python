@@ -33,7 +33,7 @@ class TestGithubOrgClient(unittest.TestCase):
             mock_get_json: Mock object for the get_json function
         """
         from client import GithubOrgClient
-        
+
         expected_org_data = {"login": org_name, "id": 12345}
         mock_get_json.return_value = expected_org_data
 
@@ -49,7 +49,7 @@ class TestGithubOrgClient(unittest.TestCase):
         the correct repos_url from the mocked org payload.
         """
         from client import GithubOrgClient
-        
+
         known_payload = {
             "repos_url": "https://api.github.com/orgs/google/repos"
         }
@@ -71,7 +71,7 @@ class TestGithubOrgClient(unittest.TestCase):
             mock_get_json: Mock object for the get_json function
         """
         from client import GithubOrgClient
-        
+
         test_payload = [
             {"name": "episodes.dart"},
             {"name": "kratu"},
