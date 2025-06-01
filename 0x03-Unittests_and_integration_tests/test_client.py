@@ -56,8 +56,10 @@ class TestGithubOrgClient(unittest.TestCase):
             "repos_url": "https://api.github.com/orgs/google/repos"
         }
 
-        with patch('client.GithubOrgClient.org',
-                   new_callable=lambda: property(lambda self: known_payload)):
+        def org_property():
+            return property(lambda self: known_payload)
+
+        with patch('client.GithubOrgClient.org', new_callable=org_property):
             client = GithubOrgClient("google")
             result = client._public_repos_url
             self.assertEqual(result, known_payload["repos_url"])
@@ -83,7 +85,10 @@ class TestGithubOrgClient(unittest.TestCase):
 
         test_url = "https://api.github.com/orgs/google/repos"
         property_patch = 'client.GithubOrgClient._public_repos_url'
-        property_factory = lambda: property(lambda self: test_url)
+        
+        def property_factory():
+            return property(lambda self: test_url)
+        
         with patch(property_patch, new_callable=property_factory) \
                 as mock_public_repos_url:
 
