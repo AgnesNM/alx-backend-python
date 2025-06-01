@@ -38,7 +38,7 @@ class TestGithubOrgClient(unittest.TestCase):
 
         client = GithubOrgClient(org_name)
         result = client.org
-        
+
         self.assertEqual(result, expected_org_data)
 
     def test_public_repos_url(self) -> None:
@@ -50,8 +50,8 @@ class TestGithubOrgClient(unittest.TestCase):
         known_payload = {
             "repos_url": "https://api.github.com/orgs/google/repos"
         }
-        
-        with patch('client.GithubOrgClient.org', 
+
+        with patch('client.GithubOrgClient.org',
                    new_callable=lambda: property(lambda self: known_payload)):
             client = GithubOrgClient("google")
             result = client._public_repos_url
@@ -78,17 +78,16 @@ class TestGithubOrgClient(unittest.TestCase):
         with patch('client.GithubOrgClient._public_repos_url',
                    new_callable=lambda: property(lambda self: test_url)) \
                 as mock_public_repos_url:
-            
+
             client = GithubOrgClient("google")
             result = client.public_repos()
 
             expected_repos = ["episodes.dart", "kratu", "build_tools"]
             self.assertEqual(result, expected_repos)
-            
+
             mock_get_json.assert_called_once()
             mock_public_repos_url.assert_called_once()
 
 
 if __name__ == "__main__":
     unittest.main()
-
