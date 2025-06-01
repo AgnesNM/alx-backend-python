@@ -57,6 +57,37 @@ class TestGithubOrgClient(unittest.TestCase):
             result = client._public_repos_url
             self.assertEqual(result, known_payload["repos_url"])
 
+    @patch('client.get_json')
+    def test_public_repos(self, mock_get_json) -> None:
+        """Test that GithubOrgClient.public_repos returns expected repos.
+
+        This method tests that the public_repos method returns the correct
+        list of repository names from the mocked payload.
+
+        Args:
+            mock_get_json: Mock object for the get_json function
+        """
+        test_payload = [
+            {"name": "episodes.dart"},
+            {"name": "kratu"},
+            {"name": "build_tools"},
+        ]
+        mock_get_json.return_value = test_payload
+
+        with patch('client.GithubOrgClient._public_repos_url',
+                   new_callable=lambda: property(
+                       lambda self: "https://api.github.com/orgs/google/repos"
+                   )) as mock_public_repos_url:
+            
+            client = GithubOrgClient("google")
+            result = client.public_repos()
+
+            expected_repos = ["episodes.dart", "kratu", "build_tools"]
+            self.assertEqual(result, expected_repos)
+            
+            mock_get_json.assert_called_once()
+            mock_public_repos_url.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
