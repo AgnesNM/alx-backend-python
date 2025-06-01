@@ -129,7 +129,7 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
     """Integration test class for GithubOrgClient.
 
     This class tests the GithubOrgClient in an integration context,
-    mocking only external HTTP requests while testing the full workflow.
+    mocking only external HTTP requests while testing the workflow.
     """
 
     @classmethod
