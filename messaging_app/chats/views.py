@@ -1,7 +1,9 @@
+from django.urls import path, include
 from django_filters import rest_framework as filter
 from django_filters.rest_framework import filters
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
+from rest_framework.routers import DefaultRouter
 from .models import User, Conversation, Message
 from .serializers import LoginSerializer, UserSerializer, ConversationSerializer, MessageSerializer
 from rest_framework.authtoken.models import Token
@@ -143,6 +145,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return queryset.filter(pk=self.request.user.pk)
             
         return queryset
+
 class AuthViewSet(viewsets.ViewSet):  # Changed from ModelViewSet to ViewSet
     """
     Custom authentication endpoints that return user data along with tokens.
@@ -260,6 +263,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update']:
             return ConversationSerializer
         return ConversationSerializer
+
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing messages in the messaging application.
@@ -327,3 +331,15 @@ class MessageViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update']:
             return MessageSerializer
         return MessageSerializer
+
+# Router configuration
+router = DefaultRouter()
+router.register(r'users', UserViewSet)
+router.register(r'auth', AuthViewSet, basename='auth')
+router.register(r'conversations', ConversationViewSet)
+router.register(r'messages', MessageViewSet)
+
+# URL patterns
+urlpatterns = [
+    path('api/', include(router.urls)),
+]
