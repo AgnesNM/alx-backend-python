@@ -18,7 +18,6 @@ from .serializers import LoginSerializer, UserSerializer, ConversationSerializer
 from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
 
-from rest_framework import viewsets, status
 from django.contrib.auth import authenticate
 
 class UserFilter(filter.FilterSet):
