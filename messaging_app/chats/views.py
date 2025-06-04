@@ -19,6 +19,7 @@ from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
 
 from django.contrib.auth import authenticate
+from .pagination import MessagePagination, ConversationPagination
 
 class UserFilter(filter.FilterSet):
     class Meta:
@@ -469,3 +470,13 @@ def conversation_messages(request, conversation_id):
     
     except Conversation.DoesNotExist:
         return Response({'error': 'Conversation not found'}, status=404)
+class MessageViewSet(viewsets.ModelViewSet):
+    # Override global pagination for this specific ViewSet
+    pagination_class = MessagePagination
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+
+class ConversationViewSet(viewsets.ModelViewSet):
+    pagination_class = ConversationPagination
+    queryset = Conversation.objects.all()
+    serializer_class = ConversationSerializer
