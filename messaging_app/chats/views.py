@@ -1,15 +1,24 @@
 from django.urls import path, include
 from django_filters import rest_framework as filter
+
 from django_filters.rest_framework import filters
 from rest_framework import viewsets, status, permissions
+
 from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
+
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+
+from .permissions import IsParticipantOfConversation, IsOwnerOrParticipant
+
 from .models import User, Conversation, Message
-from .serializers import LoginSerializer, UserSerializer, ConversationSerializer, MessageSerializer
+from .serializers import LoginSerializer, UserSerializer, ConversationSerializer, MessageSerializer, ConversationSerializer, MessageSerializer
+
 from rest_framework.authtoken.models import Token
 from django_filters.rest_framework import DjangoFilterBackend
+
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
 from django.contrib.auth import authenticate
 
 class UserFilter(filter.FilterSet):
@@ -343,3 +352,121 @@ router.register(r'messages', MessageViewSet)
 urlpatterns = [
     path('api/', include(router.urls)),
 ]
+
+class ConversationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing conversations with custom permissions.
+    """
+    queryset = Conversation.objects.all()
+    serializer_class = ConversationSerializer
+    permission_classes = [IsParticipantOfConversation]
+    
+    def get_queryset(self):
+        """
+        Filter conversations to only show those where the user is a participant.
+        """
+        if self.request.user.is_authenticated:
+            return Conversation.objects.filter(participants=self.request.user)
+        return Conversation.objects.none()
+    
+    def perform_create(self, serializer):
+        """
+        Automatically add the creator as a participant when creating a conversation.
+        """
+        conversation = serializer.save()
+        conversation.participants.add(self.request.user)
+    
+    @action(detail=True, methods=['post'])
+    def add_participant(self, request, pk=None):
+        """
+        Custom action to add a participant to the conversation.
+        Only existing participants can add new ones.
+        """
+        conversation = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if user_id:
+            from django.contrib.auth.models import User
+            try:
+                user = User.objects.get(id=user_id)
+                conversation.participants.add(user)
+                return Response({'status': 'participant added'})
+            except User.DoesNotExist:
+                return Response({'error': 'User not found'}, status=404)
+        
+        return Response({'error': 'user_id required'}, status=400)
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing messages with custom permissions.
+    """
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+    permission_classes = [IsParticipantOfConversation]
+    
+    def get_queryset(self):
+        """
+        Filter messages to only show those from conversations where the user is a participant.
+        """
+        if self.request.user.is_authenticated:
+            return Message.objects.filter(
+                conversation__participants=self.request.user
+            ).distinct()
+        return Message.objects.none()
+    
+    def perform_create(self, serializer):
+        """
+        Automatically set the user as the sender when creating a message.
+        """
+        serializer.save(user=self.request.user)
+    
+    def get_permissions(self):
+        """
+        Instantiate and return the list of permissions required for this view.
+        You can customize permissions based on the action.
+        """
+        if self.action == 'create':
+            # For creating messages, only check if user is participant
+            permission_classes = [IsParticipantOfConversation]
+        elif self.action in ['update', 'partial_update', 'destroy']:
+            # For editing/deleting, check if user is owner or participant
+            permission_classes = [IsOwnerOrParticipant]
+        else:
+            # For other actions (list, retrieve), use default
+            permission_classes = [IsParticipantOfConversation]
+        
+        return [permission() for permission in permission_classes]
+
+
+# Alternative approach using function-based views with decorators
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsParticipantOfConversation])
+def conversation_messages(request, conversation_id):
+    """
+    Function-based view example with custom permissions.
+    """
+    try:
+        conversation = Conversation.objects.get(id=conversation_id)
+        
+        # Check permission manually (since we're using function-based view)
+        if not conversation.participants.filter(id=request.user.id).exists():
+            return Response({'error': 'Permission denied'}, status=403)
+        
+        if request.method == 'GET':
+            messages = conversation.messages.all()
+            serializer = MessageSerializer(messages, many=True)
+            return Response(serializer.data)
+        
+        elif request.method == 'POST':
+            serializer = MessageSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(user=request.user, conversation=conversation)
+                return Response(serializer.data, status=201)
+            return Response(serializer.errors, status=400)
+    
+    except Conversation.DoesNotExist:
+        return Response({'error': 'Conversation not found'}, status=404)
