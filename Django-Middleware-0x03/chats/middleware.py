@@ -88,6 +88,104 @@ class RestrictAccessByTimeMiddleware:
         return False
 
 
+class RolepermissionMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Check if the request is for admin/moderator-only actions
+        if self.requires_admin_access(request):
+            # Check if user is authenticated
+            if not request.user.is_authenticated:
+                return HttpResponseForbidden(
+                    """
+                    <html>
+                    <head><title>Authentication Required</title></head>
+                    <body>
+                        <h1>403 Forbidden - Authentication Required</h1>
+                        <p>You must be logged in to access this resource.</p>
+                        <p>Please <a href="/login/">login</a> to continue.</p>
+                    </body>
+                    </html>
+                    """
+                )
+            
+            # Check if user has admin or moderator role
+            if not self.has_required_role(request.user):
+                return HttpResponseForbidden(
+                    """
+                    <html>
+                    <head><title>Insufficient Permissions</title></head>
+                    <body>
+                        <h1>403 Forbidden - Insufficient Permissions</h1>
+                        <p>You do not have permission to access this resource.</p>
+                        <p>Only administrators and moderators can perform this action.</p>
+                        <p>Current user: {}</p>
+                        <p>Required role: Admin or Moderator</p>
+                    </body>
+                    </html>
+                    """.format(request.user.username)
+                )
+        
+        # Process the request normally if allowed
+        response = self.get_response(request)
+        return response
+    
+    def requires_admin_access(self, request):
+        """
+        Define which paths require admin/moderator access.
+        Customize these paths based on your application's admin actions.
+        """
+        admin_paths = [
+            '/admin/',
+            '/dashboard/',
+            '/manage/',
+            '/moderate/',
+            '/users/ban/',
+            '/users/delete/',
+            '/properties/approve/',
+            '/properties/reject/',
+            '/reports/',
+            '/analytics/',
+        ]
+        
+        # Check if the request path starts with any admin paths
+        for path in admin_paths:
+            if request.path.startswith(path):
+                return True
+        
+        return False
+    
+    def has_required_role(self, user):
+        """
+        Check if the user has admin or moderator role.
+        This method supports multiple ways of checking user roles.
+        """
+        # Method 1: Check if user is Django superuser (built-in admin)
+        if user.is_superuser:
+            return True
+        
+        # Method 2: Check if user is Django staff (can access admin interface)
+        if user.is_staff:
+            return True
+        
+        # Method 3: Check using Django groups (recommended approach)
+        if user.groups.filter(name__in=['admin', 'administrator', 'moderator']).exists():
+            return True
+        
+        # Method 4: Check using custom user model fields (if you have them)
+        # Uncomment and modify based on your user model
+        # if hasattr(user, 'role'):
+        #     if user.role in ['admin', 'moderator']:
+        #         return True
+        
+        # Method 5: Check using user permissions
+        if user.has_perm('auth.change_user') or user.has_perm('auth.delete_user'):
+            return True
+        
+        return False
+
+
 class OffensiveLanguageMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -184,5 +282,103 @@ class OffensiveLanguageMiddleware:
         for path in messaging_paths:
             if request.path.startswith(path):
                 return True
+        
+        return False
+
+
+class RolepermissionMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Check if the request is for admin/moderator-only actions
+        if self.requires_admin_access(request):
+            # Check if user is authenticated
+            if not request.user.is_authenticated:
+                return HttpResponseForbidden(
+                    """
+                    <html>
+                    <head><title>Authentication Required</title></head>
+                    <body>
+                        <h1>403 Forbidden - Authentication Required</h1>
+                        <p>You must be logged in to access this resource.</p>
+                        <p>Please <a href="/login/">login</a> to continue.</p>
+                    </body>
+                    </html>
+                    """
+                )
+            
+            # Check if user has admin or moderator role
+            if not self.has_required_role(request.user):
+                return HttpResponseForbidden(
+                    """
+                    <html>
+                    <head><title>Insufficient Permissions</title></head>
+                    <body>
+                        <h1>403 Forbidden - Insufficient Permissions</h1>
+                        <p>You do not have permission to access this resource.</p>
+                        <p>Only administrators and moderators can perform this action.</p>
+                        <p>Current user: {}</p>
+                        <p>Required role: Admin or Moderator</p>
+                    </body>
+                    </html>
+                    """.format(request.user.username)
+                )
+        
+        # Process the request normally if allowed
+        response = self.get_response(request)
+        return response
+    
+    def requires_admin_access(self, request):
+        """
+        Define which paths require admin/moderator access.
+        Customize these paths based on your application's admin actions.
+        """
+        admin_paths = [
+            '/admin/',
+            '/dashboard/',
+            '/manage/',
+            '/moderate/',
+            '/users/ban/',
+            '/users/delete/',
+            '/properties/approve/',
+            '/properties/reject/',
+            '/reports/',
+            '/analytics/',
+        ]
+        
+        # Check if the request path starts with any admin paths
+        for path in admin_paths:
+            if request.path.startswith(path):
+                return True
+        
+        return False
+    
+    def has_required_role(self, user):
+        """
+        Check if the user has admin or moderator role.
+        This method supports multiple ways of checking user roles.
+        """
+        # Method 1: Check if user is Django superuser (built-in admin)
+        if user.is_superuser:
+            return True
+        
+        # Method 2: Check if user is Django staff (can access admin interface)
+        if user.is_staff:
+            return True
+        
+        # Method 3: Check using Django groups (recommended approach)
+        if user.groups.filter(name__in=['admin', 'administrator', 'moderator']).exists():
+            return True
+        
+        # Method 4: Check using custom user model fields (if you have them)
+        # Uncomment and modify based on your user model
+        # if hasattr(user, 'role'):
+        #     if user.role in ['admin', 'moderator']:
+        #         return True
+        
+        # Method 5: Check using user permissions
+        if user.has_perm('auth.change_user') or user.has_perm('auth.delete_user'):
+            return True
         
         return False
