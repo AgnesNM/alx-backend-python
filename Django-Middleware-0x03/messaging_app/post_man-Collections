@@ -1,0 +1,258 @@
+# 🧪 Postman API Testing Guide
+
+## Prerequisites
+1. ✅ Django server running on `http://localhost:8000`
+2. ✅ User account created: `davidattenborough` / `boatymcboatface`
+3. ✅ Database migrated with `python manage.py migrate`
+4. ✅ Postman installed or use the bash simulation script
+
+## 📋 Test Execution Order
+
+### Phase 1: Authentication Setup
+**Goal:** Verify JWT authentication works and unauthorized access is blocked
+
+| Test | Expected Result | Status Code |
+|------|----------------|-------------|
+| **Login - Get JWT Token** | Returns `access` and `refresh` tokens | 200 |
+| **Test Invalid Credentials** | Error message, no tokens | 401 |
+| **Test Unauthenticated Access** | Access denied to conversations | 401 |
+| **Refresh Token** | New access token returned | 200 |
+
+**✅ Success Criteria:**
+- Valid credentials return JWT tokens
+- Invalid credentials are rejected
+- Unauthenticated users cannot access protected endpoints
+
+---
+
+### Phase 2: Conversation Management
+**Goal:** Test CRUD operations on conversations with proper permissions
+
+| Test | Expected Result | Status Code |
+|------|----------------|-------------|
+| **Create Conversation** | New conversation created, user added as participant | 201 |
+| **Get All Conversations** | Paginated list of user's conversations only | 200 |
+| **Get Specific Conversation** | Single conversation details | 200 |
+| **Update Conversation** | Modified conversation returned | 200 |
+| **Add Participant** | Success message | 200 |
+
+**✅ Success Criteria:**
+- Users can only see conversations they participate in
+- Conversation creation automatically adds creator as participant
+- Updates work correctly
+
+---
+
+### Phase 3: Message Operations
+**Goal:** Test message CRUD with participant-only access
+
+| Test | Expected Result | Status Code |
+|------|----------------|-------------|
+| **Send Message** | Message created with user as sender | 201 |
+| **Get All Messages (Paginated)** | 20 messages per page, pagination metadata | 200 |
+| **Get Specific Message** | Single message details | 200 |
+| **Update Message** | Modified message (only if user is owner) | 200 |
+| **Delete Message** | Message deleted (only if user is owner/participant) | 204 |
+
+**✅ Success Criteria:**
+- Messages are paginated (20 per page by default)
+- Users can only access messages from conversations they participate in
+- Only message owners can edit their messages
+
+---
+
+### Phase 4: Filtering & Search
+**Goal:** Verify filtering and search functionality works with pagination
+
+| Test | Filter Type | Expected Result |
+|------|------------|-----------------|
+| **Filter by Content** | `content=test` | Messages containing "test" |
+| **Filter by Date Range** | `date_after=2024-01-01` | Messages from 2024 onwards |
+| **Filter by User** | `user_username=david` | Messages from users with "david" in username |
+| **Search Messages** | `search=hello` | Messages matching "hello" in content/user/conversation |
+| **Get Recent Messages** | Last 24 hours | Messages from past day |
+| **Get My Messages** | Current user only | User's own messages |
+
+**✅ Success Criteria:**
+- All filters return correctly filtered results
+- Pagination works with filtering
+- Search spans multiple fields
+
+---
+
+### Phase 5: Security & Permissions
+**Goal:** Ensure security measures prevent unauthorized access
+
+| Test | Attack Vector | Expected Result | Status Code |
+|------|--------------|-----------------|-------------|
+| **Invalid Token** | Malformed JWT | Access denied | 401 |
+| **Unauthorized Message Access** | Send to non-participant conversation | Access denied | 403/404 |
+| **Non-existent Resource** | Access conversation ID 99999 | Not found | 404 |
+
+**✅ Success Criteria:**
+- Invalid tokens are rejected
+- Users cannot access conversations they don't participate in
+- Proper error codes returned
+
+---
+
+### Phase 6: Error Handling
+**Goal:** Verify API handles errors gracefully
+
+| Test | Error Type | Expected Result | Status Code |
+|------|-----------|-----------------|-------------|
+| **Invalid JSON** | Malformed request body | JSON parse error | 400 |
+| **Missing Required Fields** | Empty message body | Validation errors | 400 |
+
+**✅ Success Criteria:**
+- Clear error messages for invalid requests
+- Validation errors specify missing fields
+
+---
+
+### Phase 7: Advanced Features
+**Goal:** Test pagination edge cases and performance
+
+| Test | Scenario | Expected Result |
+|------|----------|-----------------|
+| **Different Page Sizes** | `page_size=5` | Exactly 5 results (or fewer if less available) |
+| **Pagination Navigation** | `page=2` | Second page with metadata |
+| **Ordering** | `ordering=created_at` | Messages sorted by creation date |
+
+**✅ Success Criteria:**
+- Custom page sizes respected (max 100)
+- Pagination metadata accurate
+- Ordering works correctly
+
+---
+
+## 🔧 How to Run Tests
+
+### Option 1: Use Postman Collection
+1. Import the JSON collection into Postman
+2. Set environment variable `base_url` to `http://localhost:8000`
+3. Run tests in order (authentication first)
+4. Collection will auto-populate tokens and IDs
+
+### Option 2: Use Bash Simulation
+```bash
+# Make the script executable
+chmod +x postman_simulation.sh
+
+# Run all tests
+./postman_simulation.sh
+
+# Or run individual test sections
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"username": "davidattenborough", "password": "boatymcboatface"}' \
+  http://localhost:8000/api/token/
+```
+
+### Option 3: Manual Testing
+Copy individual curl commands from the simulation script
+
+---
+
+## 🎯 Key Success Metrics
+
+### Security ✅
+- [ ] Unauthenticated users blocked (401)
+- [ ] Invalid tokens rejected (401)
+- [ ] Users only see their conversations
+- [ ] Users only edit their own messages
+
+### Functionality ✅
+- [ ] JWT authentication working
+- [ ] Conversations CRUD operations
+- [ ] Messages CRUD operations
+- [ ] Participant-based permissions
+
+### Performance ✅
+- [ ] Pagination working (20 messages/page)
+- [ ] Filtering by content, date, user
+- [ ] Search across multiple fields
+- [ ] Efficient queryset optimization
+
+### User Experience ✅
+- [ ] Clear error messages
+- [ ] Consistent response format
+- [ ] Proper HTTP status codes
+- [ ] Pagination metadata included
+
+---
+
+## 🐛 Common Issues & Solutions
+
+### Issue: 401 Unauthorized
+**Cause:** Invalid or expired JWT token
+**Solution:** Re-run login test to get fresh token
+
+### Issue: 403 Forbidden
+**Cause:** User not participant in conversation
+**Solution:** Verify user is added to conversation participants
+
+### Issue: 404 Not Found
+**Cause:** Resource doesn't exist or user lacks access
+**Solution:** Check resource ID and user permissions
+
+### Issue: 400 Bad Request
+**Cause:** Invalid request format or missing fields
+**Solution:** Verify JSON format and required fields
+
+---
+
+## 📊 Expected Response Examples
+
+### Successful Login Response:
+```json
+{
+  "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+### Paginated Messages Response:
+```json
+{
+  "count": 45,
+  "total_pages": 3,
+  "current_page": 1,
+  "page_size": 20,
+  "next": "http://localhost:8000/api/messages/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "content": "Hello! This is a test message.",
+      "user": 1,
+      "conversation": 1,
+      "created_at": "2024-12-04T10:30:00Z",
+      "message_type": "text"
+    }
+  ]
+}
+```
+
+### Error Response Example:
+```json
+{
+  "conversation": ["This field is required."],
+  "content": ["This field may not be blank."]
+}
+```
+
+---
+
+## 🚀 Ready for Production Checklist
+
+- [ ] All authentication tests pass
+- [ ] All CRUD operations work
+- [ ] Pagination implemented (20/page)
+- [ ] Filtering by content, date, user works
+- [ ] Search functionality works
+- [ ] Security tests pass (unauthorized access blocked)
+- [ ] Error handling works properly
+- [ ] Performance is acceptable
+
+**Once all tests pass, your API is ready for frontend integration!** 🎉
