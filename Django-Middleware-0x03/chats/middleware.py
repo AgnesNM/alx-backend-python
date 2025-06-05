@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.http import HttpResponseForbidden
+from collections import defaultdict, deque
 
 # Configure logger to write to file
 logger = logging.getLogger('request_logger')
@@ -70,6 +71,106 @@ class RestrictAccessByTimeMiddleware:
         """
         Check if the request is for messaging/chat functionality.
         Customize these paths based on your app's URL structure.
+        """
+        messaging_paths = [
+            '/messages/',
+            '/chat/',
+            '/messaging/',
+            '/inbox/',
+            '/conversations/',
+        ]
+        
+        # Check if the request path starts with any messaging paths
+        for path in messaging_paths:
+            if request.path.startswith(path):
+                return True
+        
+        return False
+
+
+class OffensiveLanguageMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        # Dictionary to store message timestamps for each IP address
+        # Using deque to efficiently manage time-based sliding window
+        self.ip_message_times = defaultdict(deque)
+        self.rate_limit = 5  # Maximum messages per time window
+        self.time_window = timedelta(minutes=1)  # 1 minute time window
+
+    def __call__(self, request):
+        # Check if this is a POST request to messaging endpoints (sending a message)
+        if request.method == 'POST' and self.is_messaging_request(request):
+            client_ip = self.get_client_ip(request)
+            current_time = datetime.now()
+            
+            # Clean old timestamps outside the time window
+            self.clean_old_timestamps(client_ip, current_time)
+            
+            # Check if user has exceeded the rate limit
+            if len(self.ip_message_times[client_ip]) >= self.rate_limit:
+                return HttpResponseForbidden(
+                    """
+                    <html>
+                    <head><title>Rate Limit Exceeded</title></head>
+                    <body>
+                        <h1>403 Forbidden - Rate Limit Exceeded</h1>
+                        <p>You have exceeded the message limit of {} messages per minute.</p>
+                        <p>Please wait before sending another message.</p>
+                        <p>Time remaining: {} seconds</p>
+                    </body>
+                    </html>
+                    """.format(
+                        self.rate_limit,
+                        self.get_time_remaining(client_ip, current_time)
+                    )
+                )
+            
+            # Add current timestamp to the user's message history
+            self.ip_message_times[client_ip].append(current_time)
+        
+        # Process the request normally
+        response = self.get_response(request)
+        return response
+    
+    def get_client_ip(self, request):
+        """
+        Get the client's IP address from the request.
+        Handles cases where the request might be behind a proxy.
+        """
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+    
+    def clean_old_timestamps(self, ip, current_time):
+        """
+        Remove timestamps that are outside the current time window.
+        """
+        cutoff_time = current_time - self.time_window
+        
+        # Remove old timestamps from the left side of the deque
+        while (self.ip_message_times[ip] and 
+               self.ip_message_times[ip][0] < cutoff_time):
+            self.ip_message_times[ip].popleft()
+    
+    def get_time_remaining(self, ip, current_time):
+        """
+        Calculate how much time the user needs to wait before sending another message.
+        """
+        if not self.ip_message_times[ip]:
+            return 0
+        
+        oldest_message_time = self.ip_message_times[ip][0]
+        time_when_allowed = oldest_message_time + self.time_window
+        remaining_seconds = (time_when_allowed - current_time).total_seconds()
+        
+        return max(0, int(remaining_seconds))
+    
+    def is_messaging_request(self, request):
+        """
+        Check if the request is for messaging/chat functionality.
         """
         messaging_paths = [
             '/messages/',
