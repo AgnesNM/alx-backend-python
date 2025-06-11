@@ -1,7 +1,158 @@
-# models.py - Complete models with threading support
+# models.py - Complete models with unread custom manager
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.db.models import Q
+
+
+# ✅ Custom Managers defined in models.py (can also be in separate managers.py)
+class UnreadMessagesManager(models.Manager):
+    """
+    Custom manager for filtering unread messages for a specific user.
+    Provides optimized queries for unread message operations.
+    """
+    
+    def for_user(self, user):
+        """
+        Get all unread messages for a specific user (where user is receiver).
+        Returns QuerySet of unread messages.
+        """
+        return self.filter(receiver=user, is_read=False)
+    
+    def unread_for_user(self, user):
+        """
+        Alias for for_user() - more descriptive method name.
+        Get all unread messages for a specific user.
+        """
+        return self.for_user(user)
+    
+    def unread_count_for_user(self, user):
+        """
+        Get count of unread messages for a specific user.
+        More efficient than len() as it uses COUNT() query.
+        """
+        return self.filter(receiver=user, is_read=False).count()
+    
+    def unread_threads_for_user(self, user):
+        """
+        Get unread thread root messages for a user.
+        Returns root messages of threads that have unread messages.
+        """
+        return self.filter(
+            receiver=user,
+            is_read=False,
+            parent_message__isnull=True  # Only root messages
+        )
+    
+    def unread_replies_for_user(self, user):
+        """
+        Get unread reply messages for a user.
+        Returns only reply messages (not thread roots).
+        """
+        return self.filter(
+            receiver=user,
+            is_read=False,
+            parent_message__isnull=False  # Only replies
+        )
+    
+    def mark_thread_as_read(self, thread_root, user):
+        """
+        Mark all messages in a thread as read for a specific user.
+        Returns number of messages marked as read.
+        """
+        return self.filter(
+            Q(id=thread_root.id) | Q(thread_root=thread_root),
+            receiver=user,
+            is_read=False
+        ).update(is_read=True)
+    
+    def unread_with_optimized_fields(self, user):
+        """
+        Get unread messages with only necessary fields using .only().
+        Optimized for performance when you only need specific fields.
+        """
+        return self.filter(
+            receiver=user, 
+            is_read=False
+        ).only(  # ✅ .only() optimization
+            'id', 
+            'sender', 
+            'content', 
+            'timestamp', 
+            'parent_message',
+            'thread_root',
+            'depth_level'
+        ).select_related('sender', 'parent_message')
+    
+    def unread_inbox_optimized(self, user):
+        """
+        Optimized query for inbox view with unread messages.
+        Uses select_related, prefetch_related, and only() for best performance.
+        """
+        return self.filter(
+            receiver=user,
+            is_read=False
+        ).only(  # ✅ .only() for specific fields
+            'id',
+            'sender',
+            'receiver', 
+            'content',
+            'timestamp',
+            'parent_message',
+            'thread_root',
+            'depth_level',
+            'reply_count',
+            'edited'
+        ).select_related(
+            'sender',
+            'receiver',
+            'parent_message',
+            'thread_root'
+        ).prefetch_related(
+            'replies'
+        ).order_by('-timestamp')
+    
+    def recent_unread_for_user(self, user, limit=10):
+        """
+        Get recent unread messages for a user with limit.
+        Useful for notifications or dashboard views.
+        """
+        return self.filter(
+            receiver=user,
+            is_read=False
+        ).only(  # ✅ .only() optimization
+            'id',
+            'sender',
+            'content',
+            'timestamp'
+        ).select_related(
+            'sender'
+        ).order_by('-timestamp')[:limit]
+
+
+class ThreadMessagesManager(models.Manager):
+    """
+    Custom manager for thread-related message operations.
+    """
+    
+    def thread_roots_for_user(self, user):
+        """
+        Get all thread root messages for a user.
+        """
+        return self.filter(
+            Q(sender=user) | Q(receiver=user),
+            parent_message__isnull=True
+        )
+    
+    def unread_thread_roots_for_user(self, user):
+        """
+        Get thread roots that have unread messages for a user.
+        """
+        return self.filter(
+            receiver=user,
+            is_read=False,
+            parent_message__isnull=True
+        )
 
 
 class Message(models.Model):
@@ -17,11 +168,14 @@ class Message(models.Model):
     )
     content = models.TextField()
     timestamp = models.DateTimeField(default=timezone.now)
+    
+    # ✅ Read status field
     is_read = models.BooleanField(default=False)
+    
     edited = models.BooleanField(default=False)
     last_edited = models.DateTimeField(null=True, blank=True)
     
-    # ✅ THREADING FIELDS - These were missing!
+    # Threading fields
     parent_message = models.ForeignKey(
         'self',
         on_delete=models.CASCADE,
@@ -40,14 +194,21 @@ class Message(models.Model):
     
     depth_level = models.PositiveIntegerField(default=0)
     reply_count = models.PositiveIntegerField(default=0)
+    
+    # ✅ CUSTOM MANAGERS - These lines are critical!
+    objects = models.Manager()  # Default manager
+    unread = UnreadMessagesManager()  # ✅ Custom unread manager
+    threads = ThreadMessagesManager()  # Custom thread manager
 
     class Meta:
         ordering = ['-timestamp']
         indexes = [
+            models.Index(fields=['receiver', 'is_read']),  # ✅ Optimized for unread queries
             models.Index(fields=['parent_message']),
             models.Index(fields=['thread_root']),
             models.Index(fields=['sender', 'receiver']),
             models.Index(fields=['timestamp']),
+            models.Index(fields=['is_read', 'timestamp']),  # ✅ Composite index
         ]
 
     def __str__(self):
@@ -82,7 +243,7 @@ class Message(models.Model):
         root = self.get_thread_root()
         if root:
             return Message.objects.filter(
-                models.Q(id=root.id) | models.Q(thread_root=root)
+                Q(id=root.id) | Q(thread_root=root)
             ).order_by('timestamp')
         return Message.objects.filter(id=self.id)
     
@@ -99,6 +260,18 @@ class Message(models.Model):
             participants.add(msg.sender)
             participants.add(msg.receiver)
         return list(participants)
+    
+    def mark_as_read(self):
+        """Mark this message as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.save(update_fields=['is_read'])
+    
+    def mark_as_unread(self):
+        """Mark this message as unread"""
+        if self.is_read:
+            self.is_read = False
+            self.save(update_fields=['is_read'])
 
 
 class MessageHistory(models.Model):
@@ -128,7 +301,7 @@ class MessageHistory(models.Model):
 class Notification(models.Model):
     NOTIFICATION_TYPES = [
         ('message', 'New Message'),
-        ('reply', 'New Reply'),  # ✅ NEW: Reply notification type
+        ('reply', 'New Reply'),
         ('mention', 'Mention'),
         ('system', 'System Notification'),
         ('edit', 'Message Edited'),
