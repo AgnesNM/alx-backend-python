@@ -8,10 +8,13 @@ ENV PYTHONUNBUFFERED 1
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for MySQL
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        postgresql-client \
+        default-mysql-client \
+        default-libmysqlclient-dev \
+        build-essential \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -29,5 +32,5 @@ USER appuser
 # Expose port 8000
 EXPOSE 8000
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "messaging_app.wsgi:application"]
+# Default command (can be overridden by docker-compose)
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
