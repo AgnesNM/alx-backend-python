@@ -28,7 +28,9 @@ services:
     ports:
       - "3306:3306"
     volumes:
+      # Named volume for persistent MySQL data storage
       - mysql_data:/var/lib/mysql
+      # Bind mount for MySQL initialization scripts
       - ./mysql-init:/docker-entrypoint-initdb.d
     networks:
       - messaging-network
