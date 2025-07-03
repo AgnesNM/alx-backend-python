@@ -104,7 +104,7 @@ pipeline {
     environment {
         // Define environment variables
         PYTHONPATH = "${WORKSPACE}"
-        GITHUB_REPO = 'https://github.com/AgnesNM/alx-backend-python.git'  // Replace with your repo URL
+        GITHUB_REPO = 'https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git'  // Replace with your repo URL
         GIT_BRANCH = 'main'  // Change to 'master' if using master branch
     }
     
@@ -154,10 +154,12 @@ pipeline {
                     sh '''
                         python3 -m venv venv
                         . venv/bin/activate
-                        pip install --upgrade pip
-                        pip install pytest pytest-html pytest-cov
-                        if [ -f requirements.txt ]; then
-                            pip install -r requirements.txt
+                        pip3 install --upgrade pip
+                        pip3 install pytest pytest-html pytest-cov
+                        if [ -f messaging_app/requirements.txt ]; then
+                            pip3 install -r messaging_app/requirements.txt
+                        elif [ -f requirements.txt ]; then
+                            pip3 install -r requirements.txt
                         fi
                     '''
                 }
