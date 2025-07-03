@@ -1,318 +1,355 @@
-# Django GitHub Actions Testing Setup Guide
+name: CI/CD Pipeline
 
-## Step 1: Create the GitHub Actions Workflow
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
 
-Create the directory structure and workflow file in your repository:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+          MYSQL_DATABASE: test_messaging_app
+          MYSQL_USER: django_user
+          MYSQL_PASSWORD: django_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
 
-```bash
-mkdir -p .github/workflows
-```
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
 
-Then create `.github/workflows/ci.yml` with the workflow configuration provided above.
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-## Step 2: Project Structure
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
 
-Ensure your project has the following structure:
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
-```
-messaging_app/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                    ← CREATE THIS FILE
-├── messaging_app/
-│   ├── __init__.py
-│   ├── settings.py
-│   ├── urls.py
-│   ├── wsgi.py
-│   └── apps/
-│       └── your_app/
-├── tests/
-│   ├── __init__.py
-│   ├── test_models.py
-│   ├── test_views.py
-│   └── test_utils.py
-├── requirements.txt
-├── manage.py
-└── README.md
-```
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config default-libmysqlclient-dev build-essential
 
-## Step 3: Update Requirements.txt
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install mysqlclient
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+        if [ -f messaging_app/requirements.txt ]; then
+          pip install -r messaging_app/requirements.txt
+        fi
+        # Install testing dependencies
+        pip install pytest pytest-django pytest-cov pytest-html coverage
 
-Make sure your `requirements.txt` includes all necessary dependencies:
+    - name: Wait for MySQL to be ready
+      run: |
+        until mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot_password --silent; do
+          echo 'Waiting for MySQL...'
+          sleep 2
+        done
+        echo 'MySQL is ready!'
 
-```txt
-# Django and database
-Django>=4.2.0
-mysqlclient>=2.2.0
-
-# Testing dependencies
-pytest>=7.4.0
-pytest-django>=4.5.2
-pytest-cov>=4.1.0
-pytest-html>=3.2.0
-coverage>=7.2.0
-
-# Additional testing tools
-factory-boy>=3.3.0
-faker>=19.0.0
-
-# Code quality
-flake8>=6.0.0
-bandit>=1.7.5
-
-# Your app-specific dependencies
-# Add your other requirements here
-```
-
-## Step 4: Configure Django Settings for Testing
-
-### Option 1: Separate Test Settings File
-
-Create `messaging_app/test_settings.py`:
-
-```python
-from .settings import *
-
-# Database configuration for CI/CD
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'test_messaging_app',
-        'USER': 'django_user',
-        'PASSWORD': 'django_password',
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
-        'TEST': {
-            'CHARSET': 'utf8mb4',
-            'COLLATION': 'utf8mb4_unicode_ci',
-        }
-    }
-}
-
-# Speed up tests
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
-]
-
-# Disable migrations for faster tests
-class DisableMigrations:
-    def __contains__(self, item):
-        return True
-    def __getitem__(self, item):
-        return None
-
-MIGRATION_MODULES = DisableMigrations()
-
-# Use in-memory cache
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-    }
-}
-
-# Test-specific settings
-SECRET_KEY = 'test-secret-key'
-DEBUG = True
-LOGGING_CONFIG = None
-```
-
-### Option 2: Environment-based Settings
-
-Update your main `settings.py` to detect CI environment:
-
-```python
-import os
-
-# Detect if running in CI
-if os.environ.get('CI'):
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': 'test_messaging_app',
-            'USER': 'django_user',
-            'PASSWORD': 'django_password',
-            'HOST': '127.0.0.1',
-            'PORT': '3306',
-            'OPTIONS': {
-                'charset': 'utf8mb4',
-            },
-            'TEST': {
-                'CHARSET': 'utf8mb4',
-                'COLLATION': 'utf8mb4_unicode_ci',
+    - name: Set up Django settings for testing
+      run: |
+        # Create test settings file
+        cat > test_settings.py << EOF
+        from messaging_app.settings import *
+        
+        # Database configuration for testing
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.mysql',
+                'NAME': 'test_messaging_app',
+                'USER': 'django_user',
+                'PASSWORD': 'django_password',
+                'HOST': '127.0.0.1',
+                'PORT': '3306',
+                'OPTIONS': {
+                    'charset': 'utf8mb4',
+                },
+                'TEST': {
+                    'CHARSET': 'utf8mb4',
+                    'COLLATION': 'utf8mb4_unicode_ci',
+                }
             }
         }
-    }
-```
+        
+        # Use in-memory cache for testing
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            }
+        }
+        
+        # Disable migrations for faster tests
+        class DisableMigrations:
+            def __contains__(self, item):
+                return True
+            def __getitem__(self, item):
+                return None
+        
+        MIGRATION_MODULES = DisableMigrations()
+        
+        # Test-specific settings
+        PASSWORD_HASHERS = [
+            'django.contrib.auth.hashers.MD5PasswordHasher',
+        ]
+        
+        # Disable logging during tests
+        LOGGING_CONFIG = None
+        
+        SECRET_KEY = 'test-secret-key-for-ci'
+        DEBUG = True
+        EOF
 
-## Step 5: Create pytest Configuration
+    - name: Run Django migrations
+      env:
+        DJANGO_SETTINGS_MODULE: test_settings
+      run: |
+        python manage.py migrate --verbosity=2
 
-Create `pytest.ini` in your project root:
+    - name: Run Django tests
+      env:
+        DJANGO_SETTINGS_MODULE: test_settings
+      run: |
+        # Run Django's built-in tests
+        python manage.py test --verbosity=2
+        
+        # Run pytest tests with coverage
+        pytest --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing \
+               --html=reports/pytest_report.html --self-contained-html \
+               --junitxml=reports/junit.xml
 
-```ini
-[tool:pytest]
-DJANGO_SETTINGS_MODULE = test_settings
-python_files = tests.py test_*.py *_tests.py
-addopts = --tb=short --strict-markers --disable-warnings
-markers =
-    slow: marks tests as slow (deselect with '-m "not slow"')
-    integration: marks tests as integration tests
-    unit: marks tests as unit tests
-```
+    - name: Install code quality tools
+      run: |
+        pip install flake8 flake8-django flake8-import-order flake8-docstrings
 
-## Step 6: Sample Test Files
+    - name: Run flake8 linting (strict)
+      run: |
+        # Create flake8 configuration
+        cat > setup.cfg << EOF
+        [flake8]
+        max-line-length = 88
+        max-complexity = 10
+        exclude = 
+            .git,
+            __pycache__,
+            migrations,
+            venv,
+            env,
+            .venv,
+            .env,
+            node_modules,
+            .tox,
+            build,
+            dist
+        ignore = 
+            E203,  # whitespace before ':'
+            W503,  # line break before binary operator
+            D100,  # Missing docstring in public module
+            D101,  # Missing docstring in public class
+            D102,  # Missing docstring in public method
+            D103,  # Missing docstring in public function
+            D104,  # Missing docstring in public package
+            D105   # Missing docstring in magic method
+        per-file-ignores =
+            */settings/*.py:E501,F401,F403,F405
+            */test_*.py:D100,D101,D102,D103,D104,D105
+            */tests.py:D100,D101,D102,D103,D104,D105
+            */conftest.py:D100,D101,D102,D103,D104,D105
+            manage.py:D100
+        EOF
+        
+        # Run flake8 with strict checking - BUILD WILL FAIL ON ANY ERRORS
+        echo "Running flake8 linting..."
+        flake8 . --count --show-source --statistics --tee --output-file=reports/flake8-report.txt
+        
+        # Check exit code and fail build if linting errors found
+        if [ $? -ne 0 ]; then
+          echo "❌ Linting errors detected! Build failed."
+          echo "Please fix the linting errors before proceeding."
+          exit 1
+        else
+          echo "✅ No linting errors found!"
+        fi
 
-### Sample Model Test (`tests/test_models.py`):
+    - name: Generate comprehensive coverage reports
+      env:
+        DJANGO_SETTINGS_MODULE: test_settings
+      run: |
+        # Create reports directory
+        mkdir -p reports
+        
+        # Generate coverage reports in multiple formats
+        coverage xml -o reports/coverage.xml
+        coverage html -d reports/htmlcov
+        coverage json -o reports/coverage.json
+        coverage report --format=markdown > reports/coverage-summary.md
+        
+        # Generate coverage badge data
+        coverage report --format=total > reports/coverage-total.txt
+        COVERAGE_PERCENT=$(cat reports/coverage-total.txt)
+        echo "COVERAGE_PERCENT=$COVERAGE_PERCENT" >> $GITHUB_ENV
+        
+        # Create coverage summary for artifacts
+        echo "# Coverage Report Summary" > reports/coverage-info.md
+        echo "" >> reports/coverage-info.md
+        echo "**Total Coverage:** ${COVERAGE_PERCENT}%" >> reports/coverage-info.md
+        echo "**Generated:** $(date)" >> reports/coverage-info.md
+        echo "**Python Version:** ${{ matrix.python-version }}" >> reports/coverage-info.md
+        echo "" >> reports/coverage-info.md
+        coverage report --format=markdown >> reports/coverage-info.md
 
-```python
-import pytest
-from django.test import TestCase
-from django.contrib.auth.models import User
-from messaging_app.models import Message
+    - name: Check coverage threshold
+      run: |
+        # Set minimum coverage threshold (adjust as needed)
+        MINIMUM_COVERAGE=80
+        CURRENT_COVERAGE=$(cat reports/coverage-total.txt)
+        
+        echo "Current coverage: ${CURRENT_COVERAGE}%"
+        echo "Minimum required: ${MINIMUM_COVERAGE}%"
+        
+        if (( $(echo "$CURRENT_COVERAGE < $MINIMUM_COVERAGE" | bc -l) )); then
+          echo "❌ Coverage ${CURRENT_COVERAGE}% is below minimum threshold of ${MINIMUM_COVERAGE}%"
+          echo "Please add more tests to improve coverage."
+          exit 1
+        else
+          echo "✅ Coverage ${CURRENT_COVERAGE}% meets minimum threshold of ${MINIMUM_COVERAGE}%"
+        fi
 
-class MessageModelTest(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
+    - name: Run security checks with bandit
+      run: |
+        pip install bandit
+        mkdir -p reports
+        
+        # Run bandit security analysis
+        echo "Running security analysis with bandit..."
+        bandit -r . -f json -o reports/bandit-report.json -x "*/tests/*,*/test_*,*/migrations/*" || true
+        bandit -r . -x "*/tests/*,*/test_*,*/migrations/*" || true
+        
+        echo "✅ Security analysis completed"
 
-    def test_message_creation(self):
-        message = Message.objects.create(
-            sender=self.user,
-            content='Test message',
-            subject='Test Subject'
-        )
-        self.assertEqual(message.sender, self.user)
-        self.assertEqual(message.content, 'Test message')
-        self.assertTrue(message.created_at)
+    - name: Upload code quality reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: code-quality-reports-python-${{ matrix.python-version }}
+        path: |
+          reports/flake8-report.txt
+          reports/bandit-report.json
+          reports/coverage.xml
+          reports/coverage.json
+          reports/coverage-summary.md
+          reports/coverage-info.md
+          reports/htmlcov/
+        retention-days: 30
 
-    def test_message_str_representation(self):
-        message = Message.objects.create(
-            sender=self.user,
-            content='Test message',
-            subject='Test Subject'
-        )
-        self.assertEqual(str(message), 'Test Subject')
-```
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: matrix.python-version == '3.11'
+      with:
+        file: ./reports/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+        verbose: true
 
-### Sample View Test (`tests/test_views.py`):
+    - name: Upload test results and coverage
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-python-${{ matrix.python-version }}
+        path: |
+          reports/pytest_report.html
+          reports/junit.xml
+          reports/htmlcov/
+          reports/coverage.xml
+          reports/coverage-info.md
+        retention-days: 30
 
-```python
-import pytest
-from django.test import TestCase, Client
-from django.urls import reverse
-from django.contrib.auth.models import User
+    - name: Create coverage badge
+      if: matrix.python-version == '3.11' && github.ref == 'refs/heads/main'
+      run: |
+        # Install badge generator
+        pip install coverage-badge
+        
+        # Generate coverage badge
+        coverage-badge -o reports/coverage-badge.svg
+        
+        # Upload badge as artifact
+        echo "Coverage badge generated: ${COVERAGE_PERCENT}%"
 
-class MessageViewTest(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass'
-        )
-
-    def test_message_list_view(self):
-        self.client.login(username='testuser', password='testpass')
-        response = self.client.get(reverse('message_list'))
-        self.assertEqual(response.status_code, 200)
-
-    def test_unauthenticated_access(self):
-        response = self.client.get(reverse('message_list'))
-        self.assertEqual(response.status_code, 302)  # Redirect to login
-```
-
-## Step 7: Configure Code Coverage
-
-Create `.coveragerc` in your project root:
-
-```ini
-[run]
-source = .
-omit = 
-    */venv/*
-    */env/*
-    manage.py
-    */settings/*
-    */migrations/*
-    */tests/*
-    */test_*.py
-    */__pycache__/*
-    */static/*
-    */media/*
-
-[report]
-exclude_lines =
-    pragma: no cover
-    def __repr__
-    raise AssertionError
-    raise NotImplementedError
-    if __name__ == .__main__.:
-    class .*\bProtocol\):
-    @(abc\.)?abstractmethod
-```
-
-## Step 8: Local Testing Setup
-
-To test locally before pushing:
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests locally
-python manage.py test
-
-# Run with pytest
-pytest --cov=. --cov-report=html
-
-# Check code style
-flake8 .
-
-# Security check
-bandit -r .
-```
-
-## Step 9: Commit and Push
-
-```bash
-git add .github/workflows/ci.yml
-git add requirements.txt
-git add pytest.ini
-git add .coveragerc
-git add tests/
-git commit -m "Add GitHub Actions CI/CD pipeline with MySQL testing"
-git push origin main
-```
-
-## Step 10: Monitor the Workflow
-
-1. Go to your GitHub repository
-2. Click on the "Actions" tab
-3. You should see your workflow running
-4. Click on the workflow run to see detailed logs
-5. Each step will show green checkmarks when successful
-
-## Key Features of This Setup:
-
-✅ **Multi-Python Version Testing**: Tests against Python 3.9, 3.10, and 3.11
-✅ **MySQL Database Service**: Full MySQL 8.0 database for integration tests
-✅ **Comprehensive Testing**: Django tests + pytest + coverage
-✅ **Code Quality Checks**: flake8 for style, bandit for security
-✅ **Performance Optimizations**: Caching, optimized test settings
-✅ **Artifact Upload**: Test reports and coverage data saved
-✅ **PR Comments**: Automatic coverage reporting on pull requests
-✅ **Branch Protection**: Runs on pushes and pull requests
-
-## Troubleshooting:
-
-1. **MySQL Connection Issues**: The workflow waits for MySQL to be ready
-2. **Migration Errors**: Test settings disable migrations for speed
-3. **Permission Issues**: All steps run with appropriate permissions
-4. **Coverage Not Working**: Check that your tests are in the right directories
-
-This setup provides a robust CI/CD pipeline that will automatically test your Django messaging app on every push and pull request!
+    - name: Comment PR with detailed results
+      uses: actions/github-script@v6
+      if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            // Read coverage info
+            const coverageInfo = fs.readFileSync('reports/coverage-info.md', 'utf8');
+            
+            // Read flake8 results
+            let flake8Status = '✅ No linting errors';
+            try {
+              const flake8Report = fs.readFileSync('reports/flake8-report.txt', 'utf8');
+              if (flake8Report.trim()) {
+                flake8Status = '❌ Linting errors found - check artifacts';
+              }
+            } catch (e) {
+              // File doesn't exist means no errors
+            }
+            
+            const body = `## 🔍 Code Quality Report
+            
+            ### 📊 Test Coverage
+            ${coverageInfo}
+            
+            ### 🧹 Code Linting
+            ${flake8Status}
+            
+            ### 🔒 Security Analysis
+            ✅ Bandit security scan completed
+            
+            ### 📁 Artifacts
+            - 📈 [Coverage Report](${context.payload.pull_request.html_url}/checks)
+            - 🧪 [Test Results](${context.payload.pull_request.html_url}/checks)
+            - 📝 [Linting Report](${context.payload.pull_request.html_url}/checks)
+            - 🛡️ [Security Report](${context.payload.pull_request.html_url}/checks)
+            
+            **Python Version:** ${{ matrix.python-version }}
+            **Build:** [View Details](${context.payload.pull_request.html_url}/checks)`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          } catch (error) {
+            console.log('Could not post detailed comment:', error);
+          }
