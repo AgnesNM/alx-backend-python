@@ -104,7 +104,7 @@ pipeline {
     environment {
         // Define environment variables
         PYTHONPATH = "${WORKSPACE}"
-        GITHUB_REPO = 'https://github.com/AgnesNM/YOUR_REPOSITORY.git'  // Replace with your repo URL
+        GITHUB_REPO = 'https://github.com/AgnesNM/alx-backend-python.git'  // Replace with your repo URL
         GIT_BRANCH = 'main'  // Change to 'master' if using master branch
     }
     
