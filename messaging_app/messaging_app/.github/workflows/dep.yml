@@ -1,0 +1,309 @@
+# Docker Deployment with GitHub Actions Setup Guide
+
+## 📁 File Location
+Create this file: `alx-backend-python/messaging_app/.github/workflows/dep.yml`
+
+## 🔐 Step 1: Configure GitHub Secrets
+
+### Required Secrets:
+You need to add these secrets to your GitHub repository:
+
+1. **Go to GitHub Repository Settings:**
+   - Navigate to your repository: `alx-backend-python`
+   - Click **Settings** → **Secrets and variables** → **Actions**
+   - Click **New repository secret**
+
+2. **Add Docker Hub Credentials:**
+
+   **Secret 1: DOCKER_USERNAME**
+   - Name: `DOCKER_USERNAME`
+   - Value: Your Docker Hub username (e.g., `john_doe`)
+
+   **Secret 2: DOCKER_PASSWORD**
+   - Name: `DOCKER_PASSWORD`
+   - Value: Your Docker Hub password or access token (recommended)
+
+### How to Get Docker Hub Access Token:
+1. Go to [Docker Hub](https://hub.docker.com)
+2. Login → Account Settings → Security
+3. Click **New Access Token**
+4. Give it a name (e.g., "GitHub Actions")
+5. Select permissions: **Read, Write, Delete**
+6. Copy the generated token
+7. Use this token as `DOCKER_PASSWORD` secret
+
+## 📋 Step 2: Required Files
+
+### 1. **Enhanced Dockerfile** (automatically created by workflow)
+The workflow creates an optimized multi-stage Dockerfile with:
+- ✅ Multi-stage build for smaller image size
+- ✅ Non-root user for security
+- ✅ Health checks
+- ✅ Static file collection
+- ✅ Production-ready gunicorn setup
+
+### 2. **Enhanced requirements.txt**
+```txt
+# Django and Database
+Django>=4.2.0
+mysqlclient>=2.2.0
+
+# Production server
+gunicorn>=21.2.0
+whitenoise>=6.5.0
+
+# Environment management
+python-decouple>=3.8
+django-environ>=0.10.0
+
+# Database and caching
+redis>=4.6.0
+celery>=5.3.0
+
+# API framework
+djangorestframework>=3.14.0
+django-cors-headers>=4.2.0
+
+# Static files and media
+pillow>=10.0.0
+django-storages>=1.13.0
+
+# Monitoring and logging
+sentry-sdk>=1.32.0
+django-health-check>=3.17.0
+
+# Security
+django-csp>=3.7.0
+django-secure>=1.0.2
+
+# Testing (for image testing)
+pytest>=7.4.0
+pytest-django>=4.5.2
+```
+
+### 3. **Production Settings** (messaging_app/settings/production.py)
+```python
+from .base import *
+import os
+
+# Production settings
+DEBUG = False
+ALLOWED_HOSTS = ['*']  # Configure with your domain
+
+# Database
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('DB_NAME', 'messaging_app'),
+        'USER': os.getenv('DB_USER', 'root'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        }
+    }
+}
+
+# Static files
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Security settings
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': '/app/logs/django.log',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+```
+
+### 4. **Health Check URL** (messaging_app/urls.py)
+```python
+from django.contrib import admin
+from django.urls import path, include
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({'status': 'healthy', 'service': 'messaging-app'})
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('health/', health_check, name='health_check'),
+    # Add your app URLs here
+]
+```
+
+## 🚀 Step 3: Deploy the Workflow
+
+### File Structure:
+```
+alx-backend-python/
+└── messaging_app/
+    ├── .github/
+    │   └── workflows/
+    │       ├── ci.yml              # Your existing CI workflow
+    │       └── dep.yml             ← CREATE THIS FILE
+    ├── messaging_app/
+    │   ├── settings/
+    │   │   ├── __init__.py
+    │   │   ├── base.py
+    │   │   ├── production.py       ← CREATE THIS
+    │   │   └── test.py
+    │   ├── urls.py                 ← UPDATE THIS
+    │   └── ...
+    ├── requirements.txt            ← UPDATE THIS
+    └── manage.py
+```
+
+### Commands to Deploy:
+```bash
+# Navigate to your repository
+cd alx-backend-python/messaging_app
+
+# Create the workflow file
+mkdir -p .github/workflows
+# Copy the dep.yml content from the first artifact
+
+# Update requirements.txt with production dependencies
+# Create production settings
+# Update URLs for health check
+
+# Commit and push
+git add .github/workflows/dep.yml
+git add requirements.txt
+git add messaging_app/settings/production.py
+git add messaging_app/urls.py
+git commit -m "Add Docker build and push workflow"
+git push origin main
+```
+
+## 🎯 Step 4: Workflow Features
+
+### **Triggers:**
+- ✅ **Push to main/master/develop**: Builds and pushes image
+- ✅ **Tags (v*)**: Creates versioned releases
+- ✅ **Pull Requests**: Builds but doesn't push (testing only)
+- ✅ **Manual Trigger**: Via GitHub Actions UI
+
+### **Image Tags Generated:**
+- `latest` (for main branch)
+- `main`, `develop` (branch names)
+- `v1.0.0`, `v1.0`, `v1` (for version tags)
+- `pr-123` (for pull requests)
+- `main-abc123-20231201` (commit-based)
+
+### **Security Features:**
+- 🔒 **Trivy vulnerability scanning**
+- 🔒 **Non-root container user**
+- 🔒 **Multi-stage builds**
+- 🔒 **GitHub Secrets for credentials**
+
+### **Multi-Architecture:**
+- 🏗️ **linux/amd64** (Intel/AMD)
+- 🏗️ **linux/arm64** (Apple M1/M2, ARM servers)
+
+## 📊 Step 5: Monitor Deployment
+
+### GitHub Actions Dashboard:
+1. Go to **Actions** tab in your repository
+2. Look for "Build and Deploy Docker Image" workflow
+3. Click on any run to see detailed logs
+
+### Docker Hub Verification:
+1. Go to [Docker Hub](https://hub.docker.com)
+2. Navigate to your repository
+3. Verify new tags are pushed
+4. Check image sizes and details
+
+## 🐳 Step 6: Use the Deployed Image
+
+### Pull and Run:
+```bash
+# Pull the latest image
+docker pull yourusername/messaging-app:latest
+
+# Run the container
+docker run -d \
+  --name messaging-app \
+  -p 8000:8000 \
+  -e DB_HOST=your-db-host \
+  -e DB_NAME=messaging_app \
+  -e DB_USER=your-db-user \
+  -e DB_PASSWORD=your-db-password \
+  yourusername/messaging-app:latest
+
+# Check health
+curl http://localhost:8000/health/
+```
+
+### Docker Compose Example:
+```yaml
+version: '3.8'
+services:
+  web:
+    image: yourusername/messaging-app:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=messaging_app
+      - DB_USER=root
+      - DB_PASSWORD=password
+    depends_on:
+      - db
+  
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=messaging_app
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues:
+
+1. **Docker Hub Authentication Error:**
+   - Verify `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets
+   - Use access token instead of password
+
+2. **Build Failures:**
+   - Check Dockerfile syntax
+   - Verify requirements.txt is valid
+
+3. **Health Check Failures:**
+   - Ensure `/health/` URL is configured
+   - Check Django settings
+
+4. **Permission Errors:**
+   - Workflow creates non-root user automatically
+   - Check file permissions in Dockerfile
+
+The workflow provides comprehensive Docker image building with security scanning, multi-architecture support, and automatic deployment to Docker Hub!
