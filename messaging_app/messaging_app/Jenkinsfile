@@ -95,6 +95,38 @@ This command will:
 
 Create a `Jenkinsfile` in your repository root with the following content:
 
+**Option 1: Using checkout with explicit configuration**
+
+```groovy
+pipeline {
+    agent any
+    
+    environment {
+        // Define environment variables
+        PYTHONPATH = "${WORKSPACE}"
+        GITHUB_REPO = 'https://github.com/AgnesNM/YOUR_REPOSITORY.git'  // Replace with your repo URL
+        GIT_BRANCH = 'main'  // Change to 'master' if using master branch
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout code from GitHub with explicit credentials and branch
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${GIT_BRANCH}"]],
+                    userRemoteConfigs: [[
+                        credentialsId: 'github-credentials',  // This should match your Jenkins credential ID
+                        url: "${GITHUB_REPO}"
+                    ]]
+                ])
+                echo 'Code checked out successfully'
+            }
+        }
+```
+
+**Option 2: Using git step (simpler syntax)**
+
 ```groovy
 pipeline {
     agent any
@@ -107,8 +139,10 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Checkout code from GitHub
-                checkout scm
+                // Checkout code from GitHub using git step
+                git branch: 'main',  // Change to 'master' if using master branch
+                    credentialsId: 'github-credentials',  // This should match your Jenkins credential ID
+                    url: 'https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git'  // Replace with your actual repo URL
                 echo 'Code checked out successfully'
             }
         }
