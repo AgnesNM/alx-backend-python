@@ -1,0 +1,277 @@
+# Jenkins Docker Setup and Pipeline Configuration Guide
+
+## Step 1: Run Jenkins in Docker Container
+
+Execute the following command to start Jenkins:
+
+```bash
+docker run -d --name jenkins -p 8080:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home jenkins/jenkins:lts
+```
+
+This command will:
+- Pull the latest Long-Term Support (LTS) Jenkins image
+- Run Jenkins as a daemon (`-d`)
+- Name the container "jenkins"
+- Expose Jenkins on port 8080 (web UI)
+- Expose port 50000 (for Jenkins agents)
+- Create a persistent volume for Jenkins data
+
+## Step 2: Initial Jenkins Setup
+
+1. **Access Jenkins Dashboard:**
+   - Open your browser and go to `http://localhost:8080`
+   - You'll see the "Unlock Jenkins" page
+
+2. **Get Initial Admin Password:**
+   ```bash
+   docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+   ```
+   - Copy the password and paste it in the web interface
+
+3. **Install Suggested Plugins:**
+   - Click "Install suggested plugins"
+   - Wait for the installation to complete
+
+4. **Create Admin User:**
+   - Fill in the admin user details
+   - Click "Save and Continue"
+
+## Step 3: Install Required Plugins
+
+1. **Navigate to Plugin Manager:**
+   - Go to "Manage Jenkins" → "Manage Plugins"
+   - Click on "Available" tab
+
+2. **Install Required Plugins:**
+   - Search and install the following plugins:
+     - **Git plugin** (usually pre-installed)
+     - **Pipeline plugin** (usually pre-installed)
+     - **ShiningPanda Plugin** (for Python support)
+     - **HTML Publisher Plugin** (for test reports)
+     - **JUnit Plugin** (for test results)
+
+3. **Restart Jenkins:**
+   ```bash
+   docker restart jenkins
+   ```
+
+## Step 4: Configure GitHub Credentials
+
+1. **Go to Credentials:**
+   - Navigate to "Manage Jenkins" → "Manage Credentials"
+   - Click on "System" → "Global credentials (unrestricted)"
+
+2. **Add GitHub Credentials:**
+   - Click "Add Credentials"
+   - Kind: "Username with password" or "Secret text" (for token)
+   - For Username/Password:
+     - Username: Your GitHub username
+     - Password: Your GitHub personal access token
+   - For Secret text:
+     - Secret: Your GitHub personal access token
+   - ID: `github-credentials` (remember this ID)
+   - Description: "GitHub Access Token"
+
+## Step 5: Create a New Pipeline Job
+
+1. **Create New Item:**
+   - Click "New Item"
+   - Enter item name (e.g., "python-test-pipeline")
+   - Select "Pipeline"
+   - Click "OK"
+
+2. **Configure Pipeline:**
+   - In the pipeline configuration:
+     - Check "GitHub project" and enter your repository URL
+     - Under "Build Triggers", you can optionally check "GitHub hook trigger for GITScm polling"
+     - Under "Pipeline", select "Pipeline script from SCM"
+     - SCM: Git
+     - Repository URL: Your GitHub repository URL
+     - Credentials: Select the GitHub credentials you created
+     - Branch: `*/main` or `*/master`
+     - Script Path: `Jenkinsfile`
+
+## Step 6: Create Jenkinsfile
+
+Create a `Jenkinsfile` in your repository root with the following content:
+
+```groovy
+pipeline {
+    agent any
+    
+    environment {
+        // Define environment variables
+        PYTHONPATH = "${WORKSPACE}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout code from GitHub
+                checkout scm
+                echo 'Code checked out successfully'
+            }
+        }
+        
+        stage('Setup Python Environment') {
+            steps {
+                script {
+                    // Install Python dependencies
+                    sh '''
+                        python3 -m venv venv
+                        . venv/bin/activate
+                        pip install --upgrade pip
+                        pip install pytest pytest-html pytest-cov
+                        if [ -f requirements.txt ]; then
+                            pip install -r requirements.txt
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                script {
+                    // Run pytest with coverage and HTML report
+                    sh '''
+                        . venv/bin/activate
+                        pytest --html=reports/pytest_report.html --self-contained-html --cov=. --cov-report=xml --cov-report=html --junitxml=reports/junit.xml
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Reports') {
+            steps {
+                // Archive test results
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'pytest_report.html',
+                    reportName: 'PyTest Report'
+                ])
+                
+                // Archive coverage report
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'htmlcov',
+                    reportFiles: 'index.html',
+                    reportName: 'Coverage Report'
+                ])
+                
+                // Publish JUnit test results
+                junit 'reports/junit.xml'
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Clean up workspace
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
+```
+
+## Step 7: Project Structure Requirements
+
+Ensure your project has the following structure:
+
+```
+your-repo/
+├── Jenkinsfile
+├── requirements.txt
+├── src/
+│   └── your_application_code.py
+├── tests/
+│   └── test_your_application.py
+└── reports/ (will be created by pytest)
+```
+
+### Sample requirements.txt:
+```txt
+pytest>=7.0.0
+pytest-html>=3.1.0
+pytest-cov>=4.0.0
+# Add your application dependencies here
+```
+
+### Sample test file (tests/test_example.py):
+```python
+import pytest
+
+def add(a, b):
+    return a + b
+
+def test_add():
+    assert add(2, 3) == 5
+    assert add(-1, 1) == 0
+    assert add(0, 0) == 0
+
+def test_add_strings():
+    assert add("hello", "world") == "helloworld"
+```
+
+## Step 8: Trigger the Pipeline
+
+1. **Manual Trigger:**
+   - Go to your pipeline job
+   - Click "Build Now"
+
+2. **Automatic Trigger (Optional):**
+   - Set up GitHub webhooks in your repository settings
+   - Point to: `http://your-jenkins-url:8080/github-webhook/`
+
+## Step 9: View Results
+
+After the pipeline runs:
+- **Console Output:** View build logs
+- **Test Reports:** Access PyTest and Coverage reports
+- **Test Results:** View JUnit test results in Jenkins
+
+## Troubleshooting Tips
+
+1. **Python Not Found:**
+   - Ensure Python 3 is installed in the Jenkins container
+   - You might need to use a Jenkins agent with Python pre-installed
+
+2. **Permission Issues:**
+   - Make sure Jenkins has proper permissions to access Docker and file system
+
+3. **Plugin Issues:**
+   - Restart Jenkins after installing plugins
+   - Check plugin compatibility with your Jenkins version
+
+4. **GitHub Access Issues:**
+   - Ensure your GitHub token has proper permissions
+   - Use personal access tokens instead of passwords
+
+## Alternative: Using Docker Agent
+
+For better Python support, you can modify the Jenkinsfile to use a Python Docker image:
+
+```groovy
+pipeline {
+    agent {
+        docker {
+            image 'python:3.9'
+            args '-u root'
+        }
+    }
+    // ... rest of the pipeline
+}
+```
+
+This approach ensures a clean Python environment for each build.
