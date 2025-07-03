@@ -55,8 +55,9 @@ This command will:
    docker restart jenkins
    ```
 
-## Step 4: Configure GitHub Credentials
+## Step 4: Configure GitHub and Docker Hub Credentials
 
+### GitHub Credentials:
 1. **Go to Credentials:**
    - Navigate to "Manage Jenkins" → "Manage Credentials"
    - Click on "System" → "Global credentials (unrestricted)"
@@ -71,6 +72,15 @@ This command will:
      - Secret: Your GitHub personal access token
    - ID: `github-credentials` (remember this ID)
    - Description: "GitHub Access Token"
+
+### Docker Hub Credentials:
+1. **Add Docker Hub Credentials:**
+   - Click "Add Credentials" again
+   - Kind: "Username with password"
+   - Username: Your Docker Hub username
+   - Password: Your Docker Hub password or access token
+   - ID: `dockerhub-credentials` (remember this ID)
+   - Description: "Docker Hub Credentials"
 
 ## Step 5: Create a New Pipeline Job
 
@@ -134,6 +144,9 @@ pipeline {
     environment {
         // Define environment variables
         PYTHONPATH = "${WORKSPACE}"
+        DOCKER_HUB_CREDENTIALS = 'dockerhub-credentials'  // Docker Hub credential ID
+        DOCKER_IMAGE_NAME = 'your-dockerhub-username/messaging-app'  // Replace with your Docker Hub username
+        IMAGE_TAG = "${BUILD_NUMBER}"  // Use build number as tag
     }
     
     stages {
@@ -204,15 +217,53 @@ pipeline {
                 junit 'reports/junit.xml'
             }
         }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build Docker image
+                    echo 'Building Docker image...'
+                    sh """
+                        docker build -t ${DOCKER_IMAGE_NAME}:${IMAGE_TAG} .
+                        docker build -t ${DOCKER_IMAGE_NAME}:latest .
+                    """
+                    echo "Docker image built successfully: ${DOCKER_IMAGE_NAME}:${IMAGE_TAG}"
+                }
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    // Login to Docker Hub and push image
+                    withCredentials([usernamePassword(credentialsId: DOCKER_HUB_CREDENTIALS, 
+                                                    usernameVariable: 'DOCKER_USERNAME', 
+                                                    passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh """
+                            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                            docker push ${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
+                            docker push ${DOCKER_IMAGE_NAME}:latest
+                            docker logout
+                        """
+                    }
+                    echo "Docker image pushed successfully to Docker Hub"
+                }
+            }
+        }
     }
     
     post {
         always {
-            // Clean up workspace
+            // Clean up Docker images and workspace
+            sh '''
+                docker system prune -f
+                docker rmi ${DOCKER_IMAGE_NAME}:${IMAGE_TAG} || true
+                docker rmi ${DOCKER_IMAGE_NAME}:latest || true
+            '''
             cleanWs()
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Pipeline completed successfully! Docker image built and pushed to Docker Hub.'
         }
         failure {
             echo 'Pipeline failed!'
@@ -221,27 +272,75 @@ pipeline {
 }
 ```
 
-## Step 7: Project Structure Requirements
+## Step 7: Project Structure and Required Files
 
 Ensure your project has the following structure:
 
 ```
-your-repo/
+messaging_app/
 ├── Jenkinsfile
+├── Dockerfile                    ← ADD THIS FILE
 ├── requirements.txt
-├── src/
-│   └── your_application_code.py
+├── messaging_app/
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   ├── wsgi.py
+│   └── requirements.txt
 ├── tests/
 │   └── test_your_application.py
 └── reports/ (will be created by pytest)
 ```
 
-### Sample requirements.txt:
+### Create Dockerfile for Django App:
+Create a `Dockerfile` in your repository root:
+
+```dockerfile
+# Use Python 3.9 slim image
+FROM python:3.9-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /app/
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy project files
+COPY . /app/
+
+# Create non-root user
+RUN adduser --disabled-password --gecos '' appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Run Django development server
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+```
+
+### Sample requirements.txt for Django:
 ```txt
+Django>=4.2.0
 pytest>=7.0.0
 pytest-html>=3.1.0
 pytest-cov>=4.0.0
-# Add your application dependencies here
+pytest-django>=4.5.0
+psycopg2-binary>=2.9.0
+gunicorn>=20.1.0
+# Add your other Django dependencies here
 ```
 
 ### Sample test file (tests/test_example.py):
@@ -260,7 +359,37 @@ def test_add_strings():
     assert add("hello", "world") == "helloworld"
 ```
 
-## Step 8: Trigger the Pipeline
+## Step 8: Configure Jenkins for Docker
+
+### Enable Docker in Jenkins Container:
+1. **Update Jenkins Docker run command** to include Docker socket:
+   ```bash
+   docker stop jenkins
+   docker rm jenkins
+   
+   # Run Jenkins with Docker socket mounted
+   docker run -d --name jenkins \
+     -p 8080:8080 -p 50000:50000 \
+     -v jenkins_home:/var/jenkins_home \
+     -v /var/run/docker.sock:/var/run/docker.sock \
+     jenkins/jenkins:lts
+   
+   # Install Docker inside Jenkins container
+   docker exec -u root jenkins apt-get update
+   docker exec -u root jenkins apt-get install -y docker.io
+   docker exec -u root jenkins usermod -aG docker jenkins
+   docker restart jenkins
+   ```
+
+### Alternative: Use Jenkins with Docker support:
+```bash
+# Use Jenkins image with Docker pre-installed
+docker run -d --name jenkins \
+  -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  jenkinsci/blueocean
+```
 
 1. **Manual Trigger:**
    - Go to your pipeline job
@@ -270,7 +399,23 @@ def test_add_strings():
    - Set up GitHub webhooks in your repository settings
    - Point to: `http://your-jenkins-url:8080/github-webhook/`
 
-## Step 9: View Results
+## Step 9: Trigger the Pipeline
+
+1. **Manual Trigger:**
+   - Go to your pipeline job in Jenkins dashboard
+   - Click "Build Now"
+   - Monitor the build progress
+
+2. **Monitor Build Logs:**
+   - Click on the build number (e.g., "#1")
+   - Click "Console Output" to view real-time logs
+   - Look for Docker build and push confirmation messages
+
+3. **Verify Docker Hub:**
+   - Check your Docker Hub repository
+   - Confirm the image was pushed with both tags: `latest` and build number
+
+## Step 10: View Results
 
 After the pipeline runs:
 - **Console Output:** View build logs
